@@ -5,9 +5,13 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "google-auth>=2.58.0",
+    "gspread>=6.2.1",
     "langchain>=1.4.2",
     "langchain-anthropic>=1.7.2",
     "langchain-community>=0.4.2",
+    "openpyxl>=3.1.5",
+    "pandas>=3.0.6",
     "pdf2image>=1.17.0",
     "pdfplumber>=0.11.10",
     "pydantic>=2.13.5",
@@ -18,6 +22,10 @@ dependencies = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["test"]
+addopts = "-m 'not integration'"
+markers = [
+    "integration: hits real external services (Google Sheets); deselected by default",
+]
 
 [dependency-groups]
 dev = [

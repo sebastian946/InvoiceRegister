@@ -6,6 +6,9 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr = Field(..., validation_alias="ANTHROPIC_API_KEY")
     debug: bool = False
     env: str = "development"
+    # Optional: opening the sheet by id only needs the Sheets API,
+    # while opening it by name also requires the Drive API.
+    google_sheet_id: str = Field("", validation_alias="GOOGLE_SHEET_ID")
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

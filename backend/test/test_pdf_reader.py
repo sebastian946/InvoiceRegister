@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pdfplumber
 import pytest
 
-from Utils.pdf_reader import PDFReader
+from utils.pdf_reader import PDFReader
 
 FILES = Path(__file__).resolve().parent.parent / "files_upload"
 DIGITAL_INVOICE = FILES / "01_factura_electronica_digital.pdf"
@@ -37,7 +37,7 @@ def test_identifies_content_type():
 
 def test_scanned_invoice_uses_ocr():
     # Mock tesseract so the test does not depend on the binary being installed
-    with patch("Utils.pdf_reader.pytesseract.image_to_string", return_value="FACTURA 123") as ocr:
+    with patch("utils.pdf_reader.pytesseract.image_to_string", return_value="FACTURA 123") as ocr:
         text = PDFReader(SCANNED_INVOICE).read_pdf()
 
     assert ocr.called
