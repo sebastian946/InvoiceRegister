@@ -2,8 +2,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from gspread.exceptions import WorksheetNotFound
+
 from utils.google_sheet_connection import (
     CREDENTIALS_FILE,
+    DETAIL_HEADERS,
+    DETAIL_SHEET_TITLE,
     NAME_GOOGLE_SHEET,
     SCOPES,
     SyncGoogleSheet,
@@ -93,6 +97,42 @@ def test_check_connection_reports_worksheet_info(fake_google, sheet_id):
     assert info["title"] == "Hoja 1"
     assert info["rows"] == 100
     assert "@" in info["service_account"]
+
+
+def test_detail_sheet_is_reused_when_it_already_exists(fake_google, sheet_id):
+    existing = MagicMock(name="detail")
+    fake_google["spreadsheet"].worksheet.return_value = existing
+
+    sync = SyncGoogleSheet()
+
+    assert sync.detail_sheet is existing
+    fake_google["spreadsheet"].worksheet.assert_called_once_with(DETAIL_SHEET_TITLE)
+    # A pre-existing tab keeps its headers untouched
+    assert not fake_google["spreadsheet"].add_worksheet.called
+    assert not existing.append_row.called
+
+
+def test_detail_sheet_is_created_with_headers_when_missing(fake_google, sheet_id):
+    created = MagicMock(name="created detail")
+    fake_google["spreadsheet"].worksheet.side_effect = WorksheetNotFound("missing")
+    fake_google["spreadsheet"].add_worksheet.return_value = created
+
+    sync = SyncGoogleSheet()
+
+    assert sync.detail_sheet is created
+    fake_google["spreadsheet"].add_worksheet.assert_called_once_with(
+        title=DETAIL_SHEET_TITLE, rows=1000, cols=len(DETAIL_HEADERS)
+    )
+    created.append_row.assert_called_once_with(DETAIL_HEADERS)
+
+
+def test_detail_sheet_is_resolved_only_once(fake_google, sheet_id):
+    sync = SyncGoogleSheet()
+
+    sync.detail_sheet
+    sync.detail_sheet
+
+    assert fake_google["spreadsheet"].worksheet.call_count == 1
 
 
 def test_authorizes_only_once_per_instance(fake_google, sheet_id):
