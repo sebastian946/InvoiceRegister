@@ -30,3 +30,11 @@ class Invoice(BaseModel):
     items: list[InvoiceItem] = Field(
         default_factory=list, description="Lines detailing what is being billed"
     )
+
+
+class FileUploadResponse(BaseModel):
+    """Response returned when a PDF is uploaded."""
+
+    invoice: Invoice = Field(..., description="The structured data extracted from the PDF")
+    filename: str = Field(..., description="Name the file was stored under")
+    registered: bool = Field(..., description="Whether the invoice was written to the sheet")

@@ -6,7 +6,7 @@ import pytest
 
 from utils.pdf_reader import PDFReader
 
-FILES = Path(__file__).resolve().parent.parent / "files_upload"
+FILES = Path(__file__).resolve().parent / "fixtures"
 DIGITAL_INVOICE = FILES / "01_factura_electronica_digital.pdf"
 SCANNED_INVOICE = FILES / "02_factura_escaneada_imagen.pdf"
 EXPENSE_REFUND_FORM = FILES / "03_formulario_reembolso_gastos.pdf"
