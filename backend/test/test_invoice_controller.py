@@ -6,7 +6,7 @@ import pytest
 from controllers.invoice_controller import read_invoice, register_invoice
 from models.models import Invoice, InvoiceItem
 
-FILES = Path(__file__).resolve().parent.parent / "files_upload"
+FILES = Path(__file__).resolve().parent / "fixtures"
 DIGITAL_INVOICE = FILES / "01_factura_electronica_digital.pdf"
 
 FAKE_INVOICE = Invoice(
