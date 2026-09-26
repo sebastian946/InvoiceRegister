@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import google.auth
 import gspread
 from google.oauth2.service_account import Credentials
 from gspread.exceptions import WorksheetNotFound
@@ -31,12 +32,23 @@ class SyncGoogleSheet:
 
     @staticmethod
     def get_client():
-        creds = Credentials.from_service_account_file(str(CREDENTIALS_FILE), scopes=SCOPES)
+        """Authorize with the local key file, or with the runtime identity.
+
+        Locally the service account JSON sits next to this module. On Cloud Run
+        the file is not shipped: the service runs *as* the service account and
+        Application Default Credentials picks that identity up automatically.
+        """
+        if CREDENTIALS_FILE.is_file():
+            creds = Credentials.from_service_account_file(str(CREDENTIALS_FILE), scopes=SCOPES)
+        else:
+            creds, _ = google.auth.default(scopes=SCOPES)
         return gspread.authorize(creds)
 
     @staticmethod
     def service_account_email() -> str:
-        """Email the spreadsheet must be shared with."""
+        """Email the spreadsheet must be shared with. Empty when no key file is present."""
+        if not CREDENTIALS_FILE.is_file():
+            return ""
         return json.loads(CREDENTIALS_FILE.read_text()).get("client_email", "")
 
     def open_spreadsheet(self):

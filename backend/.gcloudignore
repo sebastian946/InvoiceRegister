@@ -1,0 +1,14 @@
+# Used by "gcloud run deploy --source". Mirrors .dockerignore.
+.env
+.env.*
+*.json
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+files_upload/*
+!files_upload/.gitkeep
+test/
+Dockerfile
+.dockerignore
+.gcloudignore

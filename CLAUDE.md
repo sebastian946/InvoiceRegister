@@ -28,6 +28,7 @@ uv add <package>                     # add a dependency (updates pyproject.toml 
 uv run pytest                        # run the unit tests
 uv run pytest -v                     # one line per test
 uv run pytest -k <name>              # run tests matching a name
+uv run pytest test/test_llm.py::test_chain_is_built_once   # run a single test
 uv run pytest -m integration         # ONLY the tests that hit Claude / Google Sheets (costs money, writes a row)
 uv run pytest -m integration -k real_connection   # read-only Sheets connectivity check
 uv run pytest -m integration -k real_extraction   # one real Claude call, no sheet write
@@ -35,16 +36,26 @@ uv run pytest -m integration -k real_extraction   # one real Claude call, no she
 
 Always use `uv run` / `uv add` rather than pip or a bare `python` so `uv.lock` stays in sync. Commit `uv.lock` alongside `pyproject.toml` changes.
 
+Development happens on Windows with PowerShell as the primary shell, so `VAR=x uv run ...` inline env syntax does not work there; put values in `backend/.env` or use `$env:VAR = "x"; uv run ...`. No linter or formatter is configured.
+
 ## Testing
 
 Tests live in `test/`. `pyproject.toml` sets `pythonpath = ["."]`, so tests import modules as `from utils.pdf_reader import PDFReader` and pytest must be run from `backend/`.
 
+The unit suite is offline (no Claude, Sheets or Tesseract calls) but it is **not** credential-free. Before running it make sure:
+
+- `ANTHROPIC_API_KEY` is set (any placeholder value works). `utils/config_env.py` instantiates `Settings()` at import time, so without it every test module fails at collection with a pydantic `Field required` error.
+- `utils/invoicesheets-*.json` exists. Three tests in `test_google_sheet_connection.py` (`test_credentials_file_exists`, `test_service_account_email_is_readable`, `test_check_connection_reports_worksheet_info`) read the real file from disk even though the network is mocked.
+- poppler's `pdfinfo`/`pdftoppm` is on PATH. `test_scanned_invoice_uses_ocr` mocks `pytesseract` only; `pdf2image` still rasterizes the fixture and raises `PDFInfoNotInstalledError` otherwise.
+
+With only the API key set, expect exactly those 4 failures and 34 passes; that is the environment, not a regression.
+
 `addopts = "-m 'not integration'"` deselects the `integration` marker by default. Any test that writes to the real Google Sheet or calls a paid API must carry `@pytest.mark.integration`; everything else mocks its external dependency:
 
-- OCR tests patch `utils.pdf_reader.pytesseract.image_to_string` (tesseract is not installed on this machine).
+- OCR tests patch `utils.pdf_reader.pytesseract.image_to_string` so they never need the tesseract binary.
 - Google Sheets tests patch `utils.google_sheet_connection.Credentials` and `...gspread`.
 
-Sample PDFs used as fixtures are in `test/fixtures/` and are tracked in git: `01` text-based invoice (used by the integration tests, expected number `FE-10458`), `02` scanned image invoice (OCR path), `03` an expense form that is not an invoice, and `04`/`05` two generated text-based invoices (`FE-20931`, `FV-0777`) meant for manual API testing so the sheet gets distinct rows. `files_upload/` receives real uploads and is gitignored apart from its `.gitkeep`. Assertions check for text fragments rather than exact full-document output.
+Sample PDFs used as fixtures are in `test/fixtures/` and are tracked in git: `01` text-based invoice (used by the integration tests, expected number `FE-10458`), `02` scanned image invoice (OCR path), `03` an expense form that is not an invoice, and `04`–`07` generated text-based invoices (`FE-20931`, `FV-0777`, `FE-4102`, `FV-2026-0915`) meant for manual API testing so the sheet gets distinct rows. `06` carries a withholding line (retefuente) that reduces the total below subtotal plus IVA; `07` has due date equal to issue date (contado). `files_upload/` receives real uploads and is gitignored apart from its `.gitkeep`. Assertions check for text fragments rather than exact full-document output.
 
 Route tests use `fastapi.testclient.TestClient` and monkeypatch `routes.routes.PATH_FOLDER` to a `tmp_path`, so no test writes into the repository.
 
@@ -53,8 +64,12 @@ Route tests use `fastapi.testclient.TestClient` and monkeypatch `routes.routes.P
 - **Environment variables** load through `utils/config_env.py` via `pydantic-settings` from `backend/.env` (gitignored). `ANTHROPIC_API_KEY` is required. `GOOGLE_SHEET_ID`, `ANTHROPIC_WORKSPACE_ID`, `ALLOWED_ORIGINS` (comma-separated), `PORT`, `DEBUG`, `ENV` are optional. Import `settings` from that module rather than reading `os.environ` directly.
 - **Workspace-scoped keys**: an organization-level Anthropic key rejects requests with `400 ... must include the anthropic-workspace-id header`. Either create a workspace-scoped key in the Console or set `ANTHROPIC_WORKSPACE_ID` in `.env`; `get_chain` then sends that header. A workspace-scoped key needs no header and the setting stays empty.
 - **Google service account**: `utils/invoicesheets-*.json` holds the service account private key and is gitignored. Keep it that way. The spreadsheet must be shared (as Editor) with `excel-editor@invoicesheets-509421.iam.gserviceaccount.com`.
-- **Which Google APIs are needed**: setting `GOOGLE_SHEET_ID` in `.env` makes `open_spreadsheet` use `open_by_key`, which needs only the **Sheets API** (already enabled). Leaving it empty falls back to looking the spreadsheet up by name, which additionally needs the **Drive API** — currently **disabled** in project `invoicesheets-509421`, so the name path returns HTTP 403.
-- **OCR needs system binaries**: `pdf2image` requires poppler (`pdftoppm`, installed) and `pytesseract` requires the `tesseract` binary plus the Spanish pack (`spa`), since `extract_text_from_image` defaults to `language="spa"`. Tesseract is **not** on PATH here, so real image-based extraction fails until it is installed.
+- **Which Google APIs are needed**: setting `GOOGLE_SHEET_ID` in `.env` makes `open_spreadsheet` use `open_by_key`, which needs only the **Sheets API** (already enabled). Leaving it empty falls back to looking the spreadsheet up by name, which additionally needs the **Drive API** — it was disabled in project `invoicesheets-509421` when last checked, so the name path returns HTTP 403. Prefer setting the id.
+- **OCR needs system binaries**: `pdf2image` requires poppler (`pdfinfo`, `pdftoppm`) and `pytesseract` requires the `tesseract` binary plus the Spanish pack (`spa`), since `extract_text_from_image` defaults to `language="spa"`. Neither is a Python dependency, so `uv sync` does not install them; check with `Get-Command pdftoppm, tesseract` (PowerShell) or `command -v`. On Windows download the poppler and Tesseract builds and add their `bin` folders to PATH. Without them the scanned-PDF path (`02_factura_escaneada_imagen.pdf`) fails at runtime.
+
+## Deployment
+
+Target is **Google Cloud Run**, built from `backend/Dockerfile` with `gcloud run deploy --source backend` (Cloud Build builds the image; no local Docker needed). The image installs poppler and tesseract, runs `uv sync --frozen --no-dev`, and starts `python main.py`, which binds `0.0.0.0:$PORT`. `.dockerignore` / `.gcloudignore` exclude `.env`, every `*.json` and `test/`, so **no secret is ever baked into the image**: API keys come from Secret Manager via `--set-secrets`, and the service runs as the `excel-editor@...` service account, which `SyncGoogleSheet.get_client` picks up through `google.auth.default()` when the local key file is absent. Keep `--timeout` at 300 s or more because one extraction takes about a minute. CI lives in `.github/workflows/deploy.yml` (tests on every PR, deploy on push to `main` via Workload Identity Federation, no JSON key in GitHub).
 
 ## Architecture notes
 

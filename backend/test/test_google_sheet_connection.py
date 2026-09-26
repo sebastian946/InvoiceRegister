@@ -40,6 +40,21 @@ def fake_google():
 
 
 @pytest.fixture
+def key_file(tmp_path, monkeypatch):
+    """A fake service account JSON on disk, so get_client takes the file path."""
+    path = tmp_path / "invoicesheets-test.json"
+    path.write_text('{"client_email": "test@example.iam.gserviceaccount.com"}')
+    monkeypatch.setattr("utils.google_sheet_connection.CREDENTIALS_FILE", path)
+    return path
+
+
+@pytest.fixture
+def no_key_file(tmp_path, monkeypatch):
+    """No JSON on disk, as on Cloud Run: get_client must use default credentials."""
+    monkeypatch.setattr("utils.google_sheet_connection.CREDENTIALS_FILE", tmp_path / "missing.json")
+
+
+@pytest.fixture
 def sheet_id(monkeypatch):
     """Force the id-based path (Sheets API only)."""
     monkeypatch.setattr("utils.google_sheet_connection.settings.google_sheet_id", "SHEET-123")
@@ -51,21 +66,37 @@ def no_sheet_id(monkeypatch):
     monkeypatch.setattr("utils.google_sheet_connection.settings.google_sheet_id", "")
 
 
-def test_credentials_file_exists():
-    assert CREDENTIALS_FILE.is_file(), f"Missing service account file: {CREDENTIALS_FILE}"
+needs_real_key = pytest.mark.skipif(
+    not CREDENTIALS_FILE.is_file(), reason="local service account JSON not present"
+)
 
 
+@needs_real_key
 def test_service_account_email_is_readable():
     assert "@" in SyncGoogleSheet.service_account_email()
 
 
-def test_get_client_uses_service_account_and_scopes(fake_google, no_sheet_id):
+def test_service_account_email_is_empty_without_key_file(no_key_file):
+    assert SyncGoogleSheet.service_account_email() == ""
+
+
+def test_get_client_uses_the_key_file_when_present(fake_google, key_file, no_sheet_id):
     SyncGoogleSheet()
 
     fake_google["credentials"].from_service_account_file.assert_called_with(
-        str(CREDENTIALS_FILE), scopes=SCOPES
+        str(key_file), scopes=SCOPES
     )
     assert fake_google["gspread"].authorize.called
+
+
+def test_get_client_falls_back_to_default_credentials(fake_google, no_key_file, sheet_id):
+    with patch("utils.google_sheet_connection.google.auth.default") as default:
+        default.return_value = (MagicMock(name="adc creds"), "project")
+        SyncGoogleSheet()
+
+    default.assert_called_once_with(scopes=SCOPES)
+    assert not fake_google["credentials"].from_service_account_file.called
+    fake_google["gspread"].authorize.assert_called_once_with(default.return_value[0])
 
 
 def test_opens_by_name_when_no_sheet_id(fake_google, no_sheet_id):
@@ -91,7 +122,7 @@ def test_add_new_row_appends_items_price_and_ammount(fake_google, sheet_id):
     fake_google["worksheet"].append_row.assert_called_once_with(["jamon", 1000, 1])
 
 
-def test_check_connection_reports_worksheet_info(fake_google, sheet_id):
+def test_check_connection_reports_worksheet_info(fake_google, key_file, sheet_id):
     info = SyncGoogleSheet().check_connection()
 
     assert info["title"] == "Hoja 1"
