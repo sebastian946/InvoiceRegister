@@ -166,7 +166,7 @@ uv run pytest -m integration                      # todas, incluida la que escri
 
 ### Archivos de prueba
 
-En `backend/test/fixtures/` hay cinco PDFs para probar la API:
+En `backend/test/fixtures/` hay siete PDFs para probar la API:
 
 | Archivo | Tipo | Uso |
 |---|---|---|
@@ -175,6 +175,8 @@ En `backend/test/fixtures/` hay cinco PDFs para probar la API:
 | `03_formulario_reembolso_gastos.pdf` | Formulario, no factura | Caso límite |
 | `04_factura_papeleria.pdf` | Factura con texto, 3 líneas | Prueba de la API |
 | `05_factura_logistica.pdf` | Factura con texto, 4 líneas | Prueba de la API |
+| `06_factura_consultoria.pdf` | Factura con texto, 5 líneas y retención en la fuente | Prueba de la API, total con descuento por retención |
+| `07_factura_ferreteria.pdf` | Factura con texto, 6 líneas, pago de contado | Prueba de la API |
 
 ## Estructura del proyecto
 
