@@ -4,11 +4,11 @@ This is a single structured-output call, not an agent: the model reads the text
 and fills the Invoice schema directly. There is nothing for it to decide between
 steps, so a tool-calling agent would only add cost and failure modes.
 """
-
 from functools import lru_cache
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
+from langsmith import traceable
 
 from models.models import Invoice
 from utils.config_env import settings
@@ -59,6 +59,9 @@ def get_chain():
     return PROMPT | llm.with_structured_output(Invoice, method="json_schema")
 
 
+# Parent run for the whole extraction. The LangChain chain invoked inside is
+# traced automatically and nests under it when LANGSMITH_TRACING is on.
+@traceable(name="extraction")
 def extract_invoice(pdf_text: str) -> Invoice:
     """Turn the raw text of an invoice into a validated Invoice object."""
     if not pdf_text or not pdf_text.strip():
