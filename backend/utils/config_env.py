@@ -1,3 +1,4 @@
+import os
 from typing import Annotated
 
 from pydantic import Field, SecretStr, field_validator
@@ -21,6 +22,11 @@ class Settings(BaseSettings):
         validation_alias="ALLOWED_ORIGINS",
         description="Comma-separated list of allowed origins for CORS",
     )
+    langsmith_tracing: bool = Field(False, validation_alias="LANGSMITH_TRACING")
+    langsmith_endpoint: str = Field(
+        "https://api.smith.langchain.com", validation_alias="LANGSMITH_ENDPOINT")
+    langsmith_api_key: SecretStr = Field("", validation_alias="LANGSMITH_API_KEY")
+    langsmith_project: str = Field("InvoiceRecord", validation_alias="LANGSMITH_PROJECT")
 
     @field_validator("allowed_origins", mode="before")
     @classmethod
@@ -32,3 +38,12 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# LangSmith and LangChain read their configuration from os.environ, and
+# pydantic-settings does not export .env values there. Without this block the
+# values above are loaded but tracing stays silently disabled.
+if settings.langsmith_tracing:
+    os.environ.setdefault("LANGSMITH_TRACING", "true")
+    os.environ.setdefault("LANGSMITH_ENDPOINT", settings.langsmith_endpoint)
+    os.environ.setdefault("LANGSMITH_API_KEY", settings.langsmith_api_key.get_secret_value())
+    os.environ.setdefault("LANGSMITH_PROJECT", settings.langsmith_project)
