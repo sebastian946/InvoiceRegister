@@ -8,7 +8,26 @@ from gspread.exceptions import WorksheetNotFound
 
 from utils.config_env import settings
 
-CREDENTIALS_FILE = Path(__file__).resolve().parent / "invoicesheets-509421-a2d663b71839.json"
+UTILS_DIR = Path(__file__).resolve().parent
+
+
+def find_credentials_file() -> Path:
+    """Locate the service account key without hard-coding a project name.
+
+    Order: GOOGLE_CREDENTIALS_FILE, then any "*-service-account.json" in this
+    folder, then the legacy "invoicesheets-*.json". All three patterns are
+    gitignored. The returned path may not exist: get_client then falls back
+    to Application Default Credentials.
+    """
+    if settings.google_credentials_file:
+        return Path(settings.google_credentials_file)
+    matches = sorted(UTILS_DIR.glob("*-service-account.json")) + sorted(
+        UTILS_DIR.glob("invoicesheets-*.json")
+    )
+    return matches[0] if matches else UTILS_DIR / "google-service-account.json"
+
+
+CREDENTIALS_FILE = find_credentials_file()
 NAME_GOOGLE_SHEET = "Invoice Register"
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",

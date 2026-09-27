@@ -38,7 +38,7 @@ sudo apt install poppler-utils tesseract-ocr tesseract-ocr-spa
 
 1. Crea un proyecto en Google Cloud y habilita la **Google Sheets API**.
 2. Crea una **cuenta de servicio** y descarga su llave en formato JSON.
-3. Guarda el JSON en `backend/utils/`. El nombre debe empezar por `invoicesheets-` para que `.gitignore` lo excluya.
+3. Guarda el JSON en `backend/utils/` con un nombre que termine en `-service-account.json`, por ejemplo `dzlabs-service-account.json`, para que `.gitignore` lo excluya y el código lo encuentre solo. También puedes indicar otra ruta con `GOOGLE_CREDENTIALS_FILE`.
 4. Crea la hoja de cálculo y ponle estos encabezados en la fila 1 de la primera pestaña:
 
    ```
