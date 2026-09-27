@@ -11,6 +11,7 @@ from utils.google_sheet_connection import (
     NAME_GOOGLE_SHEET,
     SCOPES,
     SyncGoogleSheet,
+    find_credentials_file,
 )
 
 
@@ -195,3 +196,32 @@ def test_real_add_new_row():
     """Writes a real row in Google Sheets. Run with: uv run pytest -m integration"""
     sheet = SyncGoogleSheet()
     sheet.add_new_row("jamon", 1000, 1)
+
+
+def test_credentials_file_prefers_the_explicit_setting(tmp_path, monkeypatch):
+    target = tmp_path / "custom.json"
+    monkeypatch.setattr(
+        "utils.google_sheet_connection.settings.google_credentials_file", str(target)
+    )
+
+    assert find_credentials_file() == target
+
+
+def test_credentials_file_is_found_by_pattern(tmp_path, monkeypatch):
+    monkeypatch.setattr("utils.google_sheet_connection.settings.google_credentials_file", "")
+    monkeypatch.setattr("utils.google_sheet_connection.UTILS_DIR", tmp_path)
+    legacy = tmp_path / "invoicesheets-123.json"
+    legacy.write_text("{}")
+    assert find_credentials_file() == legacy
+
+    # A key for the new project wins over the legacy one
+    current = tmp_path / "dzlabs-service-account.json"
+    current.write_text("{}")
+    assert find_credentials_file() == current
+
+
+def test_credentials_file_defaults_to_a_missing_path(tmp_path, monkeypatch):
+    monkeypatch.setattr("utils.google_sheet_connection.settings.google_credentials_file", "")
+    monkeypatch.setattr("utils.google_sheet_connection.UTILS_DIR", tmp_path)
+
+    assert not find_credentials_file().exists()
