@@ -1,0 +1,24 @@
+# Used by "gcloud run deploy --source .". Controls what is uploaded to Cloud Build.
+# It must NOT exclude Dockerfile or .dockerignore: Cloud Build needs both.
+# Do not exclude *.json either: the frontend build needs package.json,
+# package-lock.json and the tsconfig files. Key files are excluded by name.
+.git
+.github
+.gitignore
+.gcloudignore
+.env
+.env.*
+# The frontend build reads this one. It holds a URL, not a secret.
+!frontend/.env.production
+*-service-account.json
+invoicesheets-*.json
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+node_modules/
+frontend/dist/
+backend/static/
+backend/test/
+backend/files_upload/*
+!backend/files_upload/.gitkeep

@@ -6,10 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 InvoiceRegister registers invoices: a PDF is uploaded over HTTP, its text is extracted, Claude (through LangChain) turns it into a structured `Invoice`, and the result is appended to a Google Sheet. The full pipeline works end to end. The repo has two top-level folders:
 
-- `backend/` — Python 3.12 project managed with **uv**. All current code lives here.
-- `frontend/` — empty placeholder; no framework chosen yet.
+- `backend/` — Python 3.12 project managed with **uv**. API, pipeline and tests.
+- `frontend/` — React 19 + TypeScript + Vite + Tailwind CSS 4 single-page app (upload form, extracted invoice view, per-session history). Managed with **npm**.
 
-The HTTP layer is FastAPI. `main.py` builds the app, adds CORS from `settings.allowed_origins` and includes the router; `routes/routes.py` holds the upload endpoint. No linter is configured yet.
+The HTTP layer is FastAPI. `main.py` builds the app, adds CORS from `settings.allowed_origins`, includes the router and, last, mounts the built frontend at `/`; `routes/routes.py` holds the upload endpoint. The backend has no linter; the frontend uses oxlint.
+
+**Frontend and backend ship as one service on one origin.** In production FastAPI serves the built frontend, so the browser calls the API with relative paths (`/invoices/upload`, `/Health`) and CORS is not involved. In development Vite proxies those same paths to the backend. Never hard-code an API host in the frontend.
 
 The root `README.md` is the user-facing setup guide (Spanish): Google Cloud and Anthropic setup, `.env` template, curl examples and the fixture table. Keep it in sync when endpoints, env vars or sheet headers change. `backend/README.md` only points to it; `pyproject.toml` references that file, so do not delete it.
 
@@ -17,7 +19,20 @@ Work happens on feature branches pushed to `origin` (`setup/FolderDistribution`,
 
 ## Commands
 
-All commands run from `backend/`.
+Frontend commands run from `frontend/`:
+
+```bash
+npm install                          # install locked deps
+npm run dev                          # http://localhost:5173, proxies the API to http://127.0.0.1:8000
+npm run build                        # type-check (tsc -b) and build into frontend/dist
+npm run lint                         # oxlint
+```
+
+Use `localhost`, not `127.0.0.1`, for the Vite dev server: on this machine it listens on IPv6 only. Which backend the frontend uses is set by env files in `frontend/`, never in code. `.env.development` (committed) sets `BACKEND_URL=http://127.0.0.1:8000`, the dev proxy target. `.env.production` (committed) sets `VITE_API_BASE` empty, meaning same origin, which is correct because one Cloud Run service serves page and API. To point a local frontend at the deployed backend, copy `.env.example` to `.env.local` (gitignored) and fill `BACKEND_URL` plus `BACKEND_TOKEN` (from `gcloud auth print-identity-token`, valid one hour); the Vite proxy adds it as a Bearer header. Real environment variables override the files. `BACKEND_*` names deliberately lack the `VITE_` prefix, which would bake them into browser code, so never put a token in a `VITE_` variable. The token route stops working once IAP is enabled on the service. The root `.gitignore`, `.dockerignore` and `.gcloudignore` ignore `.env.*` but carry explicit exceptions for these committed files.
+
+Google credentials expire: the `dzlabs.co` Workspace forces periodic reauthentication. When uploads fail locally with `RefreshError: Reauthentication is needed` (surfaced by the API as 502), run `gcloud auth login` and then `gcloud auth application-default login --impersonate-service-account=sheet-editor@dzlabs-invoice-register.iam.gserviceaccount.com`. After `npm run build`, the backend alone serves the whole app at `http://127.0.0.1:8000/`.
+
+Backend commands run from `backend/`.
 
 ```bash
 uv sync                              # create .venv and install locked deps
@@ -45,10 +60,11 @@ Tests live in `test/`. `pyproject.toml` sets `pythonpath = ["."]`, so tests impo
 The unit suite is offline (no Claude, Sheets or Tesseract calls) but it is **not** credential-free. Before running it make sure:
 
 - `ANTHROPIC_API_KEY` is set (any placeholder value works). `utils/config_env.py` instantiates `Settings()` at import time, so without it every test module fails at collection with a pydantic `Field required` error.
-- `utils/invoicesheets-*.json` exists. Three tests in `test_google_sheet_connection.py` (`test_credentials_file_exists`, `test_service_account_email_is_readable`, `test_check_connection_reports_worksheet_info`) read the real file from disk even though the network is mocked.
 - poppler's `pdfinfo`/`pdftoppm` is on PATH. `test_scanned_invoice_uses_ocr` mocks `pytesseract` only; `pdf2image` still rasterizes the fixture and raises `PDFInfoNotInstalledError` otherwise.
 
-With only the API key set, expect exactly those 4 failures and 34 passes; that is the environment, not a regression.
+No service account key is needed: the sheet tests write a fake key into `tmp_path`, and the one test that reads a real key is skipped when none is present. Without poppler, expect exactly that 1 failure; it is the environment, not a regression.
+
+The frontend has no unit tests. `npm run build` is its check, since it type-checks before bundling. `test/test_frontend.py` covers how the backend serves the built files and that API routes take precedence over the static mount.
 
 `addopts = "-m 'not integration'"` deselects the `integration` marker by default. Any test that writes to the real Google Sheet or calls a paid API must carry `@pytest.mark.integration`; everything else mocks its external dependency:
 
@@ -61,7 +77,7 @@ Route tests use `fastapi.testclient.TestClient` and monkeypatch `routes.routes.P
 
 ## Runtime requirements
 
-- **Environment variables** load through `utils/config_env.py` via `pydantic-settings` from `backend/.env` (gitignored). `ANTHROPIC_API_KEY` is required. `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_FILE`, `ANTHROPIC_WORKSPACE_ID`, `ALLOWED_ORIGINS` (comma-separated), `PORT`, `DEBUG`, `ENV` are optional. Import `settings` from that module rather than reading `os.environ` directly.
+- **Environment variables** load through `utils/config_env.py` via `pydantic-settings` from `backend/.env` (gitignored). `ANTHROPIC_API_KEY` is required. `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_FILE`, `FRONTEND_DIR`, `ANTHROPIC_WORKSPACE_ID`, `ALLOWED_ORIGINS` (comma-separated), `PORT`, `DEBUG`, `ENV` are optional. Import `settings` from that module rather than reading `os.environ` directly.
 - **Workspace-scoped keys**: an organization-level Anthropic key rejects requests with `400 ... must include the anthropic-workspace-id header`. Either create a workspace-scoped key in the Console or set `ANTHROPIC_WORKSPACE_ID` in `.env`; `get_chain` then sends that header. A workspace-scoped key needs no header and the setting stays empty.
 - **Google service account**: the key file lives in `backend/utils/` and is gitignored; name it `<anything>-service-account.json` (legacy `invoicesheets-*.json` also works) or point `GOOGLE_CREDENTIALS_FILE` at it. `find_credentials_file()` resolves it, so no project id is hard-coded. With no file present, `get_client` uses Application Default Credentials. The spreadsheet must be shared (as Editor) with the service account's `client_email`. The Google Cloud project is being migrated off `invoicesheets-509421` (its billing account was closed by Google and cannot be reopened), so never assume that project id or its `excel-editor@...` account.
 - **Which Google APIs are needed**: setting `GOOGLE_SHEET_ID` in `.env` makes `open_spreadsheet` use `open_by_key`, which needs only the **Sheets API** (already enabled). Leaving it empty falls back to looking the spreadsheet up by name, which additionally needs the **Drive API** — enable it in the project or the name path returns HTTP 403. Prefer setting the id.
@@ -69,9 +85,16 @@ Route tests use `fastapi.testclient.TestClient` and monkeypatch `routes.routes.P
 
 ## Deployment
 
-Target is **Google Cloud Run**, built from `backend/Dockerfile` with `gcloud run deploy --source backend` (Cloud Build builds the image; no local Docker needed). The image installs poppler and tesseract, runs `uv sync --frozen --no-dev`, and starts `python main.py`, which binds `0.0.0.0:$PORT`. `.dockerignore` / `.gcloudignore` exclude `.env`, every `*.json` and `test/`, so **no secret is ever baked into the image**: API keys come from Secret Manager via `--set-secrets`, and the service runs as the runtime service account, which `SyncGoogleSheet.get_client` picks up through `google.auth.default()` when the local key file is absent. Keep `--timeout` at 300 s or more because one extraction takes about a minute. CI lives in `.github/workflows/deploy.yml` (tests on every PR, deploy on push to `main` via Workload Identity Federation, no JSON key in GitHub).
+Target is **Google Cloud Run**, one service named `invoice-register` in project `dzlabs-invoice-register`, region `us-central1`. It is built from the **root** `Dockerfile` with `gcloud run deploy invoice-register --source . --region us-central1` run from the repository root (Cloud Build builds the image; no local Docker needed). The Dockerfile is multi-stage: a Node stage runs `npm ci && npm run build`, then the Python stage installs poppler and tesseract, runs `uv sync --frozen --no-dev`, copies `backend/` plus the built frontend into `/app/static`, and starts `python main.py`, which binds `0.0.0.0:$PORT`.
+
+Root `.dockerignore` and `.gcloudignore` keep `.env` and service account keys out, so **no secret is ever baked into the image**: API keys come from Secret Manager via `--set-secrets`, and the service runs as `sheet-editor@dzlabs-invoice-register.iam.gserviceaccount.com`, which `SyncGoogleSheet.get_client` picks up through `google.auth.default()`. Two traps: `.gcloudignore` must not exclude `Dockerfile` (the build fails with `lstat /workspace/Dockerfile`), and neither ignore file may exclude `*.json`, because the frontend build needs `package.json`, `package-lock.json` and the tsconfig files.
+
+The `dzlabs.co` organization enforces two policies that shape the setup: service account keys cannot be created (local development uses `gcloud auth application-default login --impersonate-service-account=...`), and `allUsers` bindings are rejected, so the service cannot be made public with `--allow-unauthenticated`. Browser access goes through Identity-Aware Proxy restricted to the domain. Keep `--timeout` at 300 s or more because one extraction can take close to a minute, and keep `LANGCHAIN_CALLBACKS_BACKGROUND=false` so traces are flushed before Cloud Run throttles the CPU. There is no CI workflow yet; deploys are manual.
 
 ## Architecture notes
+
+- `frontend/src/` — `api.ts` is the only module that talks to the backend: it owns the response types (keep them in sync with `backend/models/models.py`), client-side file validation, a 240 s timeout and the mapping from HTTP status to a Spanish message. `App.tsx` holds all state; `components/` are presentational. Invoice values come from a model reading an untrusted PDF, so render them as React text only and never through `dangerouslySetInnerHTML`. The history list is in-memory and is lost on reload by design; the sheet is the permanent record.
+- `main.py` static mount — `mount_frontend` must be the last registration, because a mount at `/` swallows every path no earlier route matched. `find_frontend_dir` looks at `FRONTEND_DIR`, then `backend/static` (image), then `frontend/dist` (local build). With no build present the API runs alone and `/` returns 404.
 
 - `utils/pdf_reader.py` — `PDFReader.read_pdf()` inspects the first page that yields content: a page with extractable text routes the whole file through `pdfplumber`; a page with only images routes it through 300 DPI rasterization plus OCR. Files matching neither return `None`. This is the ingestion entry point for the invoice pipeline.
 - `utils/google_sheet_connection.py` — `SyncGoogleSheet` authorizes once in `__init__` and caches both the client and worksheet 0. Paths to the credentials file are resolved relative to the module, not the working directory, so imports work from anywhere. `add_invoice` writes to **two tabs**: worksheet 0 gets one summary row per invoice in `HEADERS` order (`Número | Emisión | Vencimiento | Proveedor | NIT | Cliente | Total`), and the `Detalle` tab gets one row per line in `DETAIL_HEADERS` order (`Número | Descripción | Cantidad | Precio unitario | Total`). The invoice number is the key joining them. Both constants must stay in sync with row 1 of their tab; changing headers in the spreadsheet without changing the constant silently writes into the wrong columns. The detail tab is created with its headers on first use, via the lazy `detail_sheet` property.
