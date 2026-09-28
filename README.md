@@ -83,6 +83,39 @@ uv run uvicorn main:app --reload     # levanta la API en http://127.0.0.1:8000
 
 La documentación interactiva queda en `http://127.0.0.1:8000/docs`.
 
+### Interfaz web
+
+El frontend está en `frontend/` y usa React, TypeScript, Vite y Tailwind CSS. Requiere Node 20 o superior.
+
+Para desarrollar, con el backend corriendo en otra terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev                          # abre http://localhost:5173
+```
+
+Vite reenvía las llamadas de la API al backend en `http://127.0.0.1:8000`, así que no hay que configurar CORS.
+
+Para probar como en producción, compila el frontend y deja que el backend lo sirva todo:
+
+```bash
+cd frontend && npm run build
+cd ../backend && uv run uvicorn main:app
+```
+
+La aplicación completa queda en `http://127.0.0.1:8000/`.
+
+## Despliegue
+
+Frontend y backend se despliegan juntos como un solo servicio de Cloud Run. El `Dockerfile` de la raíz compila el frontend y lo empaqueta junto con la API. Desde la raíz del repositorio:
+
+```bash
+gcloud run deploy invoice-register --source . --region us-central1
+```
+
+El servicio es privado. El acceso desde el navegador se controla con Identity-Aware Proxy, que exige iniciar sesión con una cuenta de la organización.
+
 ## API
 
 ### `GET /Health`
@@ -181,8 +214,9 @@ En `backend/test/fixtures/` hay siete PDFs para probar la API:
 ## Estructura del proyecto
 
 ```
+Dockerfile                       # Imagen única: compila el frontend y ejecuta la API
 backend/
-├── main.py                      # App de FastAPI, CORS y registro de rutas
+├── main.py                      # App de FastAPI, rutas y servidor del frontend compilado
 ├── routes/routes.py             # POST /invoices/upload
 ├── controllers/
 │   └── invoice_controller.py    # Orquesta PDF -> texto -> Invoice -> hoja
@@ -196,7 +230,13 @@ backend/
 └── test/
     ├── fixtures/                # PDFs de muestra
     └── test_*.py
-frontend/                        # Reservado, aún sin implementar
+frontend/
+├── vite.config.ts               # Tailwind y proxy de desarrollo hacia la API
+└── src/
+    ├── App.tsx                  # Pantalla principal y estado
+    ├── api.ts                   # Cliente de la API, tipos y mensajes de error
+    ├── format.ts                # Formato de moneda, fechas y tamaños
+    └── components/              # Zona de carga, resultado e historial
 ```
 
 ## Decisiones de diseño
@@ -208,6 +248,6 @@ frontend/                        # Reservado, aún sin implementar
 
 ## Pendiente
 
-- Frontend para subir facturas desde el navegador.
 - Procesamiento en segundo plano. Hoy la petición espera a que termine la extracción.
-- Instalar Tesseract en el entorno de despliegue para soportar escaneos.
+- Historial permanente en la interfaz. Hoy la lista de facturas procesadas se pierde al recargar.
+- Despliegue automático con GitHub Actions.

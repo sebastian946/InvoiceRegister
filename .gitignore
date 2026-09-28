@@ -2,6 +2,10 @@
 .env
 .env.*
 !.env.example
+# Frontend defaults per mode hold URLs only, never secrets, so they are shared.
+# Personal overrides and tokens go in frontend/.env.local, which stays ignored.
+!frontend/.env.development
+!frontend/.env.production
 # Google service account keys
 invoicesheets-*.json
 *-service-account.json
@@ -15,6 +19,11 @@ __pycache__/
 .venv/
 venv/
 env/
+
+# Frontend
+node_modules/
+# Built frontend copied next to the backend (only happens inside the image)
+backend/static/
 
 # Packaging / build
 build/

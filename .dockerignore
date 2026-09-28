@@ -1,0 +1,20 @@
+# Keeps secrets and local state out of the image. Paths are relative to the
+# repository root, so nested files need the **/ prefix.
+.git
+.github
+**/.env
+**/.env.*
+# The frontend build reads this one. It holds a URL, not a secret.
+!frontend/.env.production
+**/*-service-account.json
+**/invoicesheets-*.json
+**/.venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/node_modules
+frontend/dist
+backend/static
+backend/test
+backend/files_upload/*
+!backend/files_upload/.gitkeep

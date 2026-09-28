@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     # Optional explicit path to the service account key. Empty means auto-detect
     # in utils/, and no file at all means Application Default Credentials.
     google_credentials_file: str = Field("", validation_alias="GOOGLE_CREDENTIALS_FILE")
+    # Optional folder holding the built frontend. Empty means auto-detect:
+    # backend/static in the image, then frontend/dist locally.
+    frontend_dir: str = Field("", validation_alias="FRONTEND_DIR")
     # Only needed when the API key is not scoped to a workspace.
     anthropic_workspace_id: str = Field("", validation_alias="ANTHROPIC_WORKSPACE_ID")
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
